@@ -30,7 +30,7 @@ function errorHandler(error, req, res, next) {
     console.error(JSON.stringify({ event: 'request_error', request_id: req.requestId, code: error.code || 'UNKNOWN' }));
   }
   if (publicError.status === 503) res.set('Retry-After', '1');
-  res.status(publicError.status).json(errorBody(publicError, req.requestId));
+  res.status(publicError.status).json(errorBody(publicError));
 }
 
 module.exports = { notFound, methodNotAllowed, errorHandler };

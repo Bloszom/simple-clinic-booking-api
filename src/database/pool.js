@@ -38,4 +38,9 @@ async function inTransaction(pool, operation) {
   }
 }
 
-module.exports = { createPool, inTransaction };
+async function lockBookingState(client, exclusive = false) {
+  const lock = exclusive ? 'pg_advisory_xact_lock' : 'pg_advisory_xact_lock_shared';
+  await client.query(`SELECT ${lock}(hashtextextended('clinic-booking-state', 0))`);
+}
+
+module.exports = { createPool, inTransaction, lockBookingState };

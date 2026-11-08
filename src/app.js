@@ -9,6 +9,7 @@ const { createBookingService } = require('./services/bookingService');
 const { createSlotService } = require('./services/slotService');
 const { bookingRoutes } = require('./routes/bookings');
 const { slotRoutes } = require('./routes/slots');
+const { createResetController } = require('./controllers/slotController');
 
 function createApp({ pool, config }) {
   const app = express();
@@ -37,7 +38,9 @@ function createApp({ pool, config }) {
     }
     res.json({ status: 'ok', database: 'connected' });
   }).all(methodNotAllowed(['GET', 'HEAD']));
-  app.use('/slots', slotRoutes(createSlotService(pool)));
+  const slots = createSlotService(pool);
+  app.route('/reset').post(createResetController(slots)).all(methodNotAllowed(['POST']));
+  app.use('/slots', slotRoutes(slots));
   app.use('/bookings', bookingRoutes(createBookingService(pool, config.apiKey), config.apiKey));
   app.use(notFound);
   app.use(errorHandler);

@@ -8,11 +8,8 @@ class AppError extends Error {
   }
 }
 
-function errorBody(error, requestId) {
-  const body = { error: { code: error.code, message: error.message } };
-  if (error.details) body.error.details = error.details;
-  if (requestId) body.error.request_id = requestId;
-  return body;
+function errorBody(error) {
+  return { error: error.message };
 }
 
 module.exports = { AppError, errorBody };

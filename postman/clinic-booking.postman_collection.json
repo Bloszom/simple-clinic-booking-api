@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Clinic Booking API",
-    "description": "Set api_key and base_url, seed slots, then run the main workflow in order. All patient values are test examples. Every endpoint requires an API key.",
+    "description": "Official Koya assessment backend contract. Set api_key and base_url, migrate/seed, then run Booking Workflow. Reset is destructive and skipped unless allow_reset is true. All patient values are examples.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -19,7 +19,11 @@
     { "key": "slot_id", "value": "" },
     { "key": "booking_id", "value": "" },
     { "key": "idempotency_key", "value": "" },
-    { "key": "next_cursor", "value": "" }
+    { "key": "next_cursor", "value": "" },
+    { "key": "provider", "value": "Dr Ade" },
+    { "key": "allow_reset", "value": "false" },
+    { "key": "future_start", "value": "" },
+    { "key": "future_end", "value": "" }
   ],
   "item": [
     {
@@ -37,9 +41,16 @@
           "request": { "method": "GET", "url": "{{base_url}}/slots" },
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
             "pm.test('Returns slots', () => pm.response.to.have.status(200));",
-            "const available = pm.response.json().slots.find(slot => slot.available);",
+            "const available = pm.response.json().slots.find(slot => slot.available && new Date(slot.start).getTime() > Date.now());",
             "pm.test('An available slot exists', () => pm.expect(available).to.be.an('object'));",
-            "if (available) pm.collectionVariables.set('slot_id', available.id);"
+            "if (available) { pm.collectionVariables.set('slot_id', available.id); pm.collectionVariables.set('provider', available.provider); }"
+          ] } }]
+        },
+        {
+          "name": "Get Slots By Provider",
+          "request": { "method": "GET", "url": "{{base_url}}/slots?provider={{provider}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Exact provider filter', () => { pm.response.to.have.status(200); pm.response.json().slots.forEach(slot => pm.expect(slot.provider).to.eql(pm.collectionVariables.get('provider'))); });"
           ] } }]
         },
         {
@@ -58,7 +69,7 @@
             ] } },
             { "listen": "test", "script": { "type": "text/javascript", "exec": [
               "pm.test('Booking created', () => pm.response.to.have.status(201));",
-              "if (pm.response.code === 201) pm.collectionVariables.set('booking_id', pm.response.json().booking.id);"
+              "if (pm.response.code === 201) { pm.collectionVariables.set('booking_id', pm.response.json().id); pm.collectionVariables.set('booking_response', pm.response.text()); }"
             ] } }
           ]
         },
@@ -73,7 +84,7 @@
             "body": { "mode": "raw", "raw": "{\n  \"slot_id\": \"{{slot_id}}\",\n  \"name\": \"Jane Doe\",\n  \"email\": \"{{email}}\"\n}", "options": { "raw": { "language": "json" } } }
           },
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('Original response replayed', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().booking.id).to.eql(pm.collectionVariables.get('booking_id')); pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'); });"
+            "pm.test('Original response replayed', () => { pm.response.to.have.status(201); pm.expect(pm.response.json()).to.deep.eql(JSON.parse(pm.collectionVariables.get('booking_response'))); pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'); });"
           ] } }]
         },
         {
@@ -108,7 +119,7 @@
           "name": "Cancel Booking",
           "request": { "method": "DELETE", "url": "{{base_url}}/bookings/{{booking_id}}" },
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('Booking cancelled', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().booking.status).to.eql('cancelled'); });"
+            "pm.test('Booking cancelled', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('cancelled'); });"
           ] } }]
         }
       ]
@@ -145,8 +156,55 @@
             "body": { "mode": "raw", "raw": "{\"slot_id\":\"{{slot_id}}\",\"name\":\"Changed Name\",\"email\":\"{{email}}\"}", "options": { "raw": { "language": "json" } } }
           },
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
-            "pm.test('Key cannot bind a different payload', () => { pm.response.to.have.status(409); pm.expect(pm.response.json().error.code).to.eql('IDEMPOTENCY_CONFLICT'); });"
+            "pm.test('Key cannot bind a different payload', () => { pm.response.to.have.status(422); pm.expect(pm.response.json().error).to.be.a('string'); });"
           ] } }]
+        },
+        {
+          "name": "Cancel Already Cancelled Booking",
+          "request": { "method": "DELETE", "url": "{{base_url}}/bookings/{{booking_id}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Repeated cancellation is rejected', () => { pm.response.to.have.status(409); pm.expect(pm.response.json().error).to.be.a('string'); });"
+          ] } }]
+        },
+        {
+          "name": "Missing Pagination Email",
+          "request": { "method": "GET", "url": "{{base_url}}/bookings" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Email is required', () => pm.response.to.have.status(400));"
+          ] } }]
+        },
+        {
+          "name": "Invalid Pagination Limit",
+          "request": { "method": "GET", "url": "{{base_url}}/bookings?email={{email}}&limit=51" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Limit above fifty is rejected', () => pm.response.to.have.status(400));"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "Reset (Destructive, Opt-In)",
+      "item": [
+        {
+          "name": "Replace All Slots And Clear Bookings",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/reset",
+            "description": "DESTRUCTIVE: removes all bookings, slots, attempts and idempotency records on the target API. Only use a dedicated test database. Set allow_reset=true to enable, then run Booking Workflow afterward. Default false skips this request.",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slots\": [\n    {\"id\":\"s1\",\"provider\":\"Dr Ade\",\"start\":\"{{future_start}}\",\"end\":\"{{future_end}}\"},\n    {\"id\":\"s2\",\"provider\":\"Dr Obi\",\"start\":\"{{future_start}}\",\"end\":\"{{future_end}}\"},\n    {\"id\":\"past-slot\",\"provider\":\"Dr Ade\",\"start\":\"2020-01-01T09:00:00Z\",\"end\":\"2020-01-01T09:30:00Z\"}\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "if (pm.collectionVariables.get('allow_reset') !== 'true') { pm.execution.skipRequest(); } else { const start = Date.now() + 86400000; pm.collectionVariables.set('future_start', new Date(start).toISOString()); pm.collectionVariables.set('future_end', new Date(start + 1800000).toISOString()); }"
+            ] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Schedule replaced', () => pm.response.to.have.status(200));"
+            ] } }
+          ]
         }
       ]
     }

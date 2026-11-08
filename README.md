@@ -4,6 +4,9 @@ Express 5 / Node.js backend for clinic appointments, using PostgreSQL through `p
 Implements API-key authentication, database-enforced booking exclusivity, cancellation,
 persistent idempotency, cursor pagination, and a persistent rolling email rate limit.
 
+Backend-only implementation of the [Koya assessment API contract](https://koyaacademy.com/assessment-api).
+The assessment's frontend is outside this repository's current scope.
+
 ## Requirements
 
 - Node.js 22 or newer and npm.
@@ -48,10 +51,17 @@ Both the server and database scripts load `.env` using dotenv; deployment enviro
 variables take precedence. The dev script requires an existing `.env` file.
 
 Seeding inserts 16 half-hour slots starting tomorrow at 09:00 UTC. Set `SEED_START`
-to a future ISO timestamp and `SEED_SLOT_COUNT` to customize it. Repeating the same
+to a future ISO timestamp, `SEED_PROVIDER` (default `Dr Ade`), and `SEED_SLOT_COUNT` to customize it. Repeating the same
 seed does not duplicate slots. Seeding is manual, never part of server startup.
-There is no public slot administration endpoint; maintain schedules through SQL or
-trusted administration tooling.
+
+### Updating an Existing Installation
+
+Stop the development server with Ctrl+C, run `npm run migrate`, then `npm run dev`.
+The new `002_assessment_contract.sql` migration preserves existing slots and bookings,
+uses existing slot UUIDs as their public string IDs, and assigns existing slots provider
+`Clinic`. It adapts stored replay responses to the new flat JSON contract. Old pagination
+cursors are invalidated. Re-import the updated Postman collection. No reseeding or reset
+is needed to preserve your current schedule.
 
 ## Configuration
 
@@ -64,6 +74,7 @@ trusted administration tooling.
 | `CORS_ORIGINS` | Comma-separated explicit origins; empty permits no cross-origin browser clients. No wildcard. |
 | `SEED_START` | Optional future ISO timestamp for manual slot seeding. |
 | `SEED_SLOT_COUNT` | Optional number of half-hour slots, `1-1000`; default `16`. |
+| `SEED_PROVIDER` | Optional provider name for seeded slots; default `Dr Ade`. |
 | `TEST_DATABASE_URL` | Optional shell variable pointing to a dedicated test database. |
 
 For Neon, copy the connection string from the Neon dashboard and use
@@ -84,47 +95,71 @@ application/json`; the body limit is 16 KB. Responses use `Cache-Control: no-sto
 | Method | Endpoint | Successful Response |
 | --- | --- | --- |
 | GET | `/health` | `200`, `{ "status": "ok", "database": "connected" }` after a database query |
-| GET | `/slots` | `200`, `{ "slots": [...] }`, chronological, with `available` on each slot |
-| POST | `/bookings` | `201`, `{ "booking": {...} }`, plus `Location` |
-| GET | `/bookings/:id` | `200`, `{ "booking": {...} }` |
-| DELETE | `/bookings/:id` | `200`, `{ "booking": {...} }` with `status: "cancelled"` |
-| GET | `/bookings?email=...&limit=20&cursor=...` | `200`, `{ "bookings": [...], "next_cursor": "..." }` |
+| POST | `/reset` | `200`, replaces slots and clears bookings; accepts `{ "slots": [...] }` |
+| GET | `/slots?provider=...` | `200`, `{ "slots": [...] }`, earliest start first, optional exact provider filter |
+| POST | `/bookings` | `201`, booking object directly, plus `Location` |
+| GET | `/bookings/:id` | `200`, booking object directly |
+| DELETE | `/bookings/:id` | `200`, booking object directly with `status: "cancelled"`; repeated cancellation returns `409` |
+| GET | `/bookings?email=...&limit=10&cursor=...` | `200`, `{ "bookings": [...], "next_cursor": "..." }`; email required |
+
+### Reset and Slot Listing
+
+`POST /reset` accepts a slots array. Each item requires a public string `id`, `provider`,
+and ISO date-time `start` and `end` with a timezone. IDs must be unique and end must be
+after start. Past slots and simultaneous appointments are accepted. For example:
+
+```json
+{
+	"slots": [
+		{ "id": "s1", "provider": "Dr Ade", "start": "2030-01-01T09:00:00Z", "end": "2030-01-01T09:30:00Z" },
+		{ "id": "s2", "provider": "Dr Obi", "start": "2030-01-01T09:00:00Z", "end": "2030-01-01T09:30:00Z" }
+	]
+}
+```
+
+Reset is destructive: it atomically deletes every booking, replaces the entire schedule,
+and clears idempotency and attempt records so earlier test runs do not affect the new
+schedule. An empty array clears the schedule. Invalid input leaves current data intact.
+An exclusive transaction-scoped advisory lock coordinates reset with bookings,
+cancellations and seeding. Never call reset against a database containing real patients.
+It exists because the assessment explicitly requires it and is protected by the API key.
+
+`GET /slots` returns all slots, including past ones. `provider` is an optional, exact,
+case-sensitive filter. Slots expose `id`, `provider`, `start`, `end`, and `available`.
+Availability is false only while a confirmed booking exists. A past slot can therefore
+be marked available, but attempting to book it returns `400`.
 
 ### Create a Booking
 
 Get an available slot ID from `/slots` first. `slot_id`, `name`, and a valid `email`
-are required. Names are trimmed and limited to 120 characters. Emails are trimmed,
+are required. Names are trimmed. Emails are trimmed,
 validated with `validator`, limited to 254 characters, and lowercased for matching
-and rate limiting. UUIDs are validated before SQL. All SQL values are parameterized.
+and rate limiting. Slot IDs are strings, not restricted to UUIDs. Booking IDs are
+generated UUIDs; looking up an unknown ID returns `404`. All SQL values are parameterized.
 
 ```sh
 curl -X POST http://localhost:3000/bookings \
 	-H "X-API-Key: YOUR_API_KEY" \
 	-H "Content-Type: application/json" \
 	-H "Idempotency-Key: YOUR_UNIQUE_REQUEST_KEY" \
-	-d '{"slot_id":"11111111-1111-4111-8111-111111111111","name":"Jane Doe","email":"jane@example.com"}'
+	-d '{"slot_id":"s1","name":"Jane Doe","email":"jane@example.com"}'
 ```
 
-The slot UUID in the example is a placeholder. In Windows PowerShell, use the
+Use a real slot ID from `/slots` in this example. In Windows PowerShell, use the
 Postman collection or `Invoke-RestMethod` instead of this POSIX-shell curl example.
 
 ```json
 {
-	"booking": {
-		"id": "22222222-2222-4222-8222-222222222222",
-		"slot_id": "11111111-1111-4111-8111-111111111111",
-		"name": "Jane Doe",
-		"email": "jane@example.com",
-		"status": "confirmed",
-		"created_at": "2030-01-01T08:00:00.000Z",
-		"cancelled_at": null
-	}
+	"id": "22222222-2222-4222-8222-222222222222",
+	"slot_id": "s1",
+	"name": "Jane Doe",
+	"email": "jane@example.com",
+	"status": "confirmed",
+	"created_at": "2030-01-01T08:00:00.000Z"
 }
 ```
 
-Slots expose UUID, `starts_at`, `ends_at`, `created_at`, and `available`. Past slots
-remain listed but are unavailable and cannot be booked. Availability is a snapshot;
-POST is authoritative. Timestamps use UTC ISO 8601.
+Availability is a snapshot; POST is authoritative. Response timestamps use UTC ISO 8601.
 
 ### Concurrency and Cancellation
 
@@ -132,26 +167,27 @@ The partial unique index `bookings_one_active_per_slot` permits only one confirm
 booking per slot, even for concurrent requests, multiple application processes, or
 direct SQL inserts. Conflict handling returns `409` rather than relying on a
 read-before-write availability check. Cancelled rows retain the original booking
-and leave the unique index, so another booking can claim that slot. DELETE is
-idempotent: repeated cancellation returns the existing cancelled booking without
-changing its cancellation timestamp. Unknown IDs return `404`.
+and leave the unique index, so another booking can claim that slot. The first DELETE
+returns `200`; repeated cancellation returns `409` without changing its cancellation
+timestamp. Unknown IDs return `404`.
 
 ### Idempotency
 
 `Idempotency-Key` is optional on POST, but recommended for every booking request.
 Use a new, unpredictable key for each logical operation and reuse it on retries.
-Keys allow 1-128 letters, digits, dots, underscores, colons, and hyphens.
+Keys are string header values and are subject to the HTTP server's header-size limits.
 
 - Keys are unique in this single-clinic API and stored in PostgreSQL.
-- The canonical validated slot/name/email payload is hashed with the operation.
-	Different JSON field order, surrounding whitespace, and email case are normalized.
+- The entire submitted JSON body is hashed with the operation. Object key order does
+	not matter, but changed values, whitespace inside strings, or extra fields do.
 - Key reservation, quota checking, booking creation, and response persistence share
 	one transaction. Concurrent retries wait for the original transaction and replay
 	its status, JSON body, `Location`, and `Retry-After`, when present.
 - Replays use `Idempotency-Replayed: true` and do not consume another attempt.
-- Reusing a key with a different validated payload returns `409 IDEMPOTENCY_CONFLICT`.
-- Business outcomes (`201`, slot `404`/`409`, and `429`) are persisted. Authentication
-	and validation errors do not bind a key. Unexpected failures roll back so retry is safe.
+- Reusing a key with a different body returns `422`.
+- Business outcomes (`201`, `400`, slot `404`/`409`, and `429`) are persisted, including
+	parsed-body validation errors. Authentication and JSON-parser failures do not bind a
+	key. Unexpected failures roll back so retry is safe.
 - A stored response is immutable, including after cancellation. To see current booking
 	state, use GET. To rebook a cancelled slot, submit a new logical request with a new key.
 - A persisted `429` keeps replaying that original response. After waiting `Retry-After`,
@@ -161,48 +197,47 @@ Keys allow 1-128 letters, digits, dots, underscores, colons, and hyphens.
 
 ### Pagination
 
-`email` is an optional exact normalized filter. `limit` defaults to 20 and accepts
-integers from 1 to 100. Results include confirmed and cancelled bookings, ordered by
-`created_at DESC, id DESC`. Use the opaque `next_cursor` unchanged for the next
+`email` is required and matched case-insensitively after normalization. `limit` defaults
+to 10 and accepts integers from 1 to 50. Results include confirmed and cancelled
+bookings, oldest first, ordered by `created_at ASC, id ASC`. Use the opaque `next_cursor` unchanged for the next
 request with the same email filter; `null` means the end. The cursor is signed with
 the API key and validated. API-key rotation invalidates outstanding cursors.
 
 Millisecond creation timestamps and the UUID tie-breaker make keyset pagination
 stable when timestamps are equal, without lossy PostgreSQL-to-JavaScript conversion.
-It is not a database snapshot across requests: new bookings appear when restarting
-from the first page, while cancellation updates a row's status without reordering it.
+It is not a database snapshot across requests: later bookings can appear on subsequent
+pages, while cancellation updates a row's status without reordering it.
 
 ### Rate Limits and Errors
 
-At most five validated, non-replayed booking attempts per normalized email are
-admitted in any rolling 60-second window. Slot conflicts, past slots, and missing
-slots count; invalid input, key conflicts, and idempotency replays do not. A PostgreSQL
+At most five non-replayed booking attempts per normalized email are admitted in any
+rolling 60-second window. Failed attempts count, including missing booking fields,
+slot conflicts, past slots, and missing slots. Invalid email strings also count when a
+nonempty, normalized string of at most 254 characters identifies repeated attempts.
+Missing/non-string emails cannot be attributed to an email quota. Authentication
+failures, JSON-parser failures, key conflicts, and idempotency replays do not count. A PostgreSQL
 transaction-scoped advisory lock serializes quota decisions per email across replicas.
 Admitted attempts persist even when a slot is unavailable. Denied attempts return
 `429` with an integer `Retry-After` in seconds and do not extend the window.
 
 ```json
 {
-	"error": {
-		"code": "RATE_LIMIT_EXCEEDED",
-		"message": "Maximum 5 booking attempts per email per minute."
-	}
+	"error": "Maximum 5 booking attempts per email per minute."
 }
 ```
 
-Centralized errors also include `error.request_id`; validation errors include a
-`details` array with field messages. Transaction-stored business errors omit the
-request ID in the body to keep replay bodies identical; every HTTP response still
+Every error uses `{ "error": "<message>" }`, matching the assessment. Every HTTP response
 has a new `X-Request-Id` header. Internal SQL, credentials, and stack traces are not exposed.
 
 | Status | Typical Reason |
 | --- | --- |
-| 400 | Invalid JSON, missing/invalid fields, UUID, limit, cursor, or idempotency key |
+| 400 | Invalid JSON, missing/invalid fields, past slot, reset input, limit, or cursor |
 | 401 | Missing or invalid API key |
 | 403 | Browser origin not allowed |
 | 404 | Endpoint, booking, or slot not found |
 | 405 | Unsupported method on a known endpoint; includes `Allow` |
-| 409 | Slot unavailable or idempotency key reused for a different payload |
+| 409 | Slot already booked or booking already cancelled |
+| 422 | Idempotency key reused with a different body |
 | 413 / 415 | Oversized JSON / unsupported content type or encoding |
 | 429 | Email quota exceeded; includes `Retry-After` |
 | 500 / 503 | Unexpected failure / temporary database or lock unavailability |
@@ -231,6 +266,8 @@ render.yaml             Render web-service blueprint using external Neon
 
 Every application table has a generated UUID primary key. Foreign keys, status checks,
 the partial unique index, and paging/rate-window indexes are in the initial SQL migration.
+Public slot IDs are stored separately in a unique `external_id` text column, so IDs such
+as `s1` work without changing internal foreign keys. API booking `slot_id` uses this public ID.
 The migration runner records UUID-keyed migration metadata and skips already applied
 files. SQL uses LF line endings for portable checksums. Never edit an applied migration;
 add a new numbered SQL file for subsequent schema changes.
@@ -256,12 +293,18 @@ Tests cover actual concurrent slot contention, direct SQL constraint enforcement
 concurrent idempotency, replay across application instances and cancellation, exact
 rolling quotas, persisted error responses, stable pagination ties, health, CORS,
 authentication, and malformed input. No minute-long sleeps are necessary.
+Contract tests also cover reset atomicity, arbitrary slot IDs, exact provider filtering,
+data-preserving upgrades, direct booking objects, error strings, and pagination defaults.
 
 Import `postman/clinic-booking.postman_collection.json` into Postman. Set collection
 variable `api_key` to your API key and adjust `base_url`. Run the main workflow in order:
 it picks an available slot, generates an idempotency key, creates a booking, replays it,
 retrieves it, paginates, and cancels it. Negative examples demonstrate missing auth,
 invalid email, and a payload conflict for the stored key. Use only test patient data.
+
+The reset example is skipped unless collection variable `allow_reset` is the string
+`true`. Enable it only against a dedicated test database, run that request explicitly,
+then disable it again before running the booking workflow. It wipes existing bookings.
 
 ## Render and Neon Deployment
 
@@ -288,7 +331,8 @@ public HTTPS termination. No Render or Neon credentials are committed.
 
 ## Operations and Security
 
-- API-key access is privileged: it can list all bookings and read/cancel any booking.
+- API-key access is privileged: it can list bookings by any email, read/cancel any booking,
+	and reset the entire schedule and booking history.
 	This is not patient login or tenant isolation. Never embed the shared key in a
 	public frontend. Add identity, ownership checks, and auditing before patient-facing use.
 - Keep secrets in Render/your secret manager, rotate keys, restrict CORS, use HTTPS,

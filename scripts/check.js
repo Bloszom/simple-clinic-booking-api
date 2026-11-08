@@ -1,6 +1,7 @@
 const { readdirSync, readFileSync } = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { Script } = require('node:vm');
 
 function checkDirectory(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -17,4 +18,13 @@ for (const directory of ['src', 'test', 'scripts']) checkDirectory(directory);
 for (const filename of ['package.json', 'postman/clinic-booking.postman_collection.json']) {
   JSON.parse(readFileSync(filename, 'utf8'));
 }
-console.log('JavaScript syntax and JSON checks passed.');
+
+function checkPostmanScripts(items) {
+  for (const item of items) {
+    for (const event of item.event || []) new Script(event.script.exec.join('\n'), { filename: item.name });
+    if (item.item) checkPostmanScripts(item.item);
+  }
+}
+
+checkPostmanScripts(JSON.parse(readFileSync('postman/clinic-booking.postman_collection.json', 'utf8')).item);
+console.log('JavaScript, JSON and Postman script syntax checks passed.');

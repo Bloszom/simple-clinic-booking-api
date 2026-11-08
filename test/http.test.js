@@ -30,11 +30,11 @@ async function request(path, options = {}) {
 
 test('every endpoint, including health, rejects missing or invalid API keys', async () => {
   const initial = queries;
-  for (const [path, method] of [['/health', 'GET'], ['/slots', 'GET'], ['/bookings', 'GET'],
+  for (const [path, method] of [['/health', 'GET'], ['/reset', 'POST'], ['/slots', 'GET'], ['/bookings', 'GET'],
     ['/bookings', 'POST'], [`/bookings/${randomUUID()}`, 'GET'], [`/bookings/${randomUUID()}`, 'DELETE']]) {
     const response = await fetch(`${baseUrl}${path}`, { method });
     assert.equal(response.status, 401);
-    assert.equal((await response.json()).error.code, 'UNAUTHORIZED');
+    assert.equal(typeof (await response.json()).error, 'string');
   }
   assert.equal((await request('/health', { headers: { 'X-API-Key': 'wrong' } })).response.status, 401);
   assert.equal(queries, initial);
@@ -57,25 +57,29 @@ test('health checks the database, returns JSON, and hides failures', async () =>
 
 test('malformed JSON, missing fields, bad media types and oversized bodies are JSON errors', async () => {
   const initial = queries;
-  for (const [body, contentType, status, code] of [
-    ['{', 'application/json', 400, 'INVALID_JSON'],
-    ['{}', 'application/json', 400, 'VALIDATION_ERROR'],
-    ['null', 'application/json', 400, 'INVALID_JSON'],
-    ['{}', 'text/plain', 415, 'UNSUPPORTED_MEDIA_TYPE'],
-    [JSON.stringify({ name: 'a'.repeat(17000) }), 'application/json', 413, 'PAYLOAD_TOO_LARGE']
+  for (const [body, contentType, status] of [
+    ['{', 'application/json', 400],
+    ['{}', 'application/json', 400],
+    ['null', 'application/json', 400],
+    ['{}', 'text/plain', 415],
+    [JSON.stringify({ name: 'a'.repeat(17000) }), 'application/json', 413]
   ]) {
     const result = await request('/bookings', { method: 'POST', headers: { 'Content-Type': contentType }, body });
     assert.equal(result.response.status, status);
-    assert.equal(result.body.error.code, code);
-    assert.ok(result.body.error.request_id);
+    assert.equal(typeof result.body.error, 'string');
+    assert.deepEqual(Object.keys(result.body), ['error']);
+    assert.ok(result.response.headers.get('x-request-id'));
   }
   assert.equal(queries, initial);
 });
 
-test('bad UUIDs, bad pagination and unsupported routes or methods have correct errors', async () => {
-  for (const [path, method, status] of [['/bookings/not-a-uuid', 'GET', 400],
-    ['/bookings?limit=101', 'GET', 400], ['/bookings?cursor=invalid', 'GET', 400],
-    ['/unknown', 'GET', 404], ['/slots', 'PUT', 405]]) {
+test('unknown IDs, bad pagination and unsupported routes or methods have correct errors', async () => {
+  for (const [path, method, status] of [['/bookings/not-a-uuid', 'GET', 404],
+    ['/bookings/not-a-uuid', 'DELETE', 404], ['/bookings', 'GET', 400],
+    ['/bookings?email=jane@example.com&limit=51', 'GET', 400],
+    ['/bookings?email=jane@example.com&cursor=invalid', 'GET', 400],
+    ['/slots?provider=Dr+Ade&provider=Dr+Obi', 'GET', 400],
+    ['/unknown', 'GET', 404], ['/slots', 'PUT', 405], ['/reset', 'GET', 405]]) {
     assert.equal((await request(path, { method })).response.status, status);
   }
 });
@@ -90,4 +94,12 @@ test('CORS permits configured origins and standard preflight without exposing AP
   } });
   assert.equal(preflight.status, 204);
   assert.ok(preflight.headers.get('access-control-allow-headers').includes('X-API-Key'));
+});
+
+test('invalid reset input fails before database access', async () => {
+  const initial = queries;
+  const result = await request('/reset', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } });
+  assert.equal(result.response.status, 400);
+  assert.equal(typeof result.body.error, 'string');
+  assert.equal(queries, initial);
 });
