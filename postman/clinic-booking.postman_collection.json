@@ -1,0 +1,154 @@
+{
+  "info": {
+    "name": "Clinic Booking API",
+    "description": "Set api_key and base_url, seed slots, then run the main workflow in order. All patient values are test examples. Every endpoint requires an API key.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      { "key": "key", "value": "X-API-Key", "type": "string" },
+      { "key": "value", "value": "{{api_key}}", "type": "string" },
+      { "key": "in", "value": "header", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000" },
+    { "key": "api_key", "value": "" },
+    { "key": "email", "value": "jane@example.com" },
+    { "key": "slot_id", "value": "" },
+    { "key": "booking_id", "value": "" },
+    { "key": "idempotency_key", "value": "" },
+    { "key": "next_cursor", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Booking Workflow",
+      "item": [
+        {
+          "name": "Health",
+          "request": { "method": "GET", "url": "{{base_url}}/health" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Database is healthy', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().database).to.eql('connected'); });"
+          ] } }]
+        },
+        {
+          "name": "Get Slots",
+          "request": { "method": "GET", "url": "{{base_url}}/slots" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Returns slots', () => pm.response.to.have.status(200));",
+            "const available = pm.response.json().slots.find(slot => slot.available);",
+            "pm.test('An available slot exists', () => pm.expect(available).to.be.an('object'));",
+            "if (available) pm.collectionVariables.set('slot_id', available.id);"
+          ] } }]
+        },
+        {
+          "name": "Create Booking",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/bookings",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"slot_id\": \"{{slot_id}}\",\n  \"name\": \"Jane Doe\",\n  \"email\": \"{{email}}\"\n}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "pm.collectionVariables.set('idempotency_key', pm.variables.replaceIn('{{$guid}}'));"
+            ] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Booking created', () => pm.response.to.have.status(201));",
+              "if (pm.response.code === 201) pm.collectionVariables.set('booking_id', pm.response.json().booking.id);"
+            ] } }
+          ]
+        },
+        {
+          "name": "Replay Booking With Same Key",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/bookings",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"slot_id\": \"{{slot_id}}\",\n  \"name\": \"Jane Doe\",\n  \"email\": \"{{email}}\"\n}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Original response replayed', () => { pm.response.to.have.status(201); pm.expect(pm.response.json().booking.id).to.eql(pm.collectionVariables.get('booking_id')); pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'); });"
+          ] } }]
+        },
+        {
+          "name": "Get Booking",
+          "request": { "method": "GET", "url": "{{base_url}}/bookings/{{booking_id}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Booking found', () => pm.response.to.have.status(200));"
+          ] } }]
+        },
+        {
+          "name": "List Bookings First Page",
+          "request": { "method": "GET", "url": "{{base_url}}/bookings?email={{email}}&limit=1" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Paginated bookings returned', () => pm.response.to.have.status(200));",
+            "pm.collectionVariables.set('next_cursor', pm.response.json().next_cursor || '');"
+          ] } }]
+        },
+        {
+          "name": "List Bookings Next Page",
+          "request": { "method": "GET", "url": "{{base_url}}/bookings?email={{email}}&limit=1&cursor={{next_cursor}}" },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+              "if (!pm.collectionVariables.get('next_cursor')) pm.execution.skipRequest();"
+            ] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('Next page returned', () => pm.response.to.have.status(200));",
+              "pm.collectionVariables.set('next_cursor', pm.response.json().next_cursor || '');"
+            ] } }
+          ]
+        },
+        {
+          "name": "Cancel Booking",
+          "request": { "method": "DELETE", "url": "{{base_url}}/bookings/{{booking_id}}" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Booking cancelled', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().booking.status).to.eql('cancelled'); });"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "Negative Examples",
+      "item": [
+        {
+          "name": "Missing API Key",
+          "request": { "method": "GET", "url": "{{base_url}}/slots", "auth": { "type": "noauth" } },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Missing key rejected', () => pm.response.to.have.status(401));"
+          ] } }]
+        },
+        {
+          "name": "Invalid Email",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/bookings",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"slot_id\":\"{{slot_id}}\",\"name\":\"Jane Doe\",\"email\":\"not-an-email\"}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Invalid email rejected', () => pm.response.to.have.status(400));"
+          ] } }]
+        },
+        {
+          "name": "Idempotency Payload Conflict",
+          "request": {
+            "method": "POST", "url": "{{base_url}}/bookings",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotency_key}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"slot_id\":\"{{slot_id}}\",\"name\":\"Changed Name\",\"email\":\"{{email}}\"}", "options": { "raw": { "language": "json" } } }
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('Key cannot bind a different payload', () => { pm.response.to.have.status(409); pm.expect(pm.response.json().error.code).to.eql('IDEMPOTENCY_CONFLICT'); });"
+          ] } }]
+        }
+      ]
+    }
+  ]
+}

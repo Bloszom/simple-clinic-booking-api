@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: clinic-booking-api
+    runtime: node
+    plan: starter
+    buildCommand: npm ci --omit=dev
+    preDeployCommand: npm run migrate
+    startCommand: npm start
+    # Leave healthCheckPath unset: Render's HTTP checks cannot supply X-API-Key.
+    # TCP health checks preserve authentication on every API endpoint.
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: API_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false
