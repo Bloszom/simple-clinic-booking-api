@@ -9,5 +9,7 @@ export function gatewayConfig(env = process.env) {
   }
   if (production && url.protocol !== 'https:') throw new Error('Production API_BASE_URL must use HTTPS.');
   if (!env.API_KEY || env.API_KEY.length < 32) throw new Error('A server-side API_KEY of at least 32 characters is required.');
-  return { apiBaseUrl: apiBaseUrl.replace(/\/+$/, ''), apiKey: env.API_KEY, production };
+  if (env.ADMIN_PASSWORD && env.ADMIN_PASSWORD.length < 16) throw new Error('ADMIN_PASSWORD must contain at least 16 characters.');
+  return { apiBaseUrl: apiBaseUrl.replace(/\/+$/, ''), apiKey: env.API_KEY,
+    adminPassword: env.ADMIN_PASSWORD || undefined, production };
 }

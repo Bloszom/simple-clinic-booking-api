@@ -122,6 +122,45 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .close-dialog { position: absolute; top: 9px; right: 9px; width: 27px; height: 27px; border: 0; }
 .dialog-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 23px; }
 .danger-button { background: var(--red); color: white; }
+.danger-button:disabled { opacity: .5; }
+.admin-login { max-width: 390px; margin: 36px auto; padding: 12px 0 24px; }
+.admin-login > svg { color: var(--green); }
+.admin-login h2 { font-family: 'Newsreader', serif; font-size: 27px; font-weight: 400; }
+.admin-muted { color: var(--muted); font-size: 12px; }
+.admin-workspace { padding: 30px 0; min-width: 0; }
+.admin-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); margin: 24px 0; }
+.admin-notice { border-left: 2px solid var(--green); padding: 13px; background: var(--green-soft); color: var(--green); font-size: 13px; margin: 18px 0; }
+.booking-search { display: grid; grid-template-columns: minmax(0, 1fr) 100px auto; gap: 14px; align-items: end; }
+.booking-search label, .reset-slot-row label, .reset-confirmation label { margin-top: 0; }
+.results-heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin: 28px 0 16px; }
+.results-heading strong { font-size: 14px; overflow-wrap: anywhere; }
+.results-heading span { display: block; font-size: 12px; color: var(--muted); margin-top: 5px; }
+.booking-table-scroll { overflow-x: auto; max-width: 100%; }
+.booking-table { width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; }
+.booking-table th { color: var(--muted); font-weight: 500; background: #eef2ef; padding: 12px; }
+.booking-table td { padding: 15px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.booking-table td strong { display: block; font-weight: 500; overflow-wrap: anywhere; }
+.booking-table td > span:not(.booking-status) { display: block; color: var(--muted); margin-top: 6px; }
+.booking-table .reference { overflow-wrap: anywhere; }
+.booking-status { display: inline-block; text-transform: capitalize; }
+.table-actions { display: flex; gap: 6px; }
+.table-actions .icon-button { width: 32px; height: 32px; }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 22px 0; }
+.pagination span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.admin-booking-details { padding: 20px 0; border-top: 1px solid var(--line); }
+.admin-booking-details h3, .schedule-tools h3 { font-size: 16px; font-weight: 500; margin: 0; }
+.admin-booking-details dl > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; font-size: 13px; margin: 12px 0; }
+.reset-warning { display: flex; gap: 13px; padding: 16px; border-left: 3px solid var(--red); background: #fcefeb; color: #8c332b; font-size: 13px; }
+.reset-warning svg { flex-shrink: 0; }
+.reset-warning p { margin: 6px 0 0; line-height: 1.6; }
+.schedule-tools { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 25px; }
+.reset-slot-row { display: grid; grid-template-columns: minmax(80px, .7fr) minmax(100px, 1fr) minmax(0, 1.5fr) minmax(0, 1.5fr) 36px; gap: 10px; align-items: end; padding: 18px 0; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.reset-slot-row > div { min-width: 0; }
+.reset-slot-row input { padding: 0 8px; font-size: 12px; }
+.checkbox-label { display: flex; align-items: center; gap: 10px; margin: 20px 0 !important; line-height: 1.5; }
+.checkbox-label input { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--red); }
+.reset-confirmation { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; padding-top: 24px; margin-top: 20px; border-top: 1px solid var(--line); }
+.reset-confirmation > div { max-width: 300px; width: 100%; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes reveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -133,12 +172,16 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .visit-details { padding-left: 23px; }
   .clinic-strip { grid-template-columns: 1fr 240px; gap: 20px; }
   .clinic-facts { gap: 12px; flex-wrap: wrap; }
+  .reset-slot-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; }
+  .reset-slot-row > div:nth-child(3) { grid-column: 1; }
+  .reset-slot-row > button { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
 }
 @media (max-width: 680px) {
   .header-inner { min-height: 68px; padding: 0 18px; gap: 10px; flex-wrap: wrap; }
   .wordmark { font-size: 21px; gap: 7px; }
   .wordmark svg { width: 23px; }
   nav { gap: 12px; }
+  .header-inner nav { flex-wrap: wrap; }
   .nav-button { font-size: 11px; gap: 5px; }
   .nav-button svg { width: 14px; }
   .page-shell { margin-top: 24px; padding: 0 18px; }
@@ -160,6 +203,16 @@ dd { margin: 0; overflow-wrap: anywhere; }
   .confirmation-view h2 { font-size: 28px; }
   .confirmation-details dl div { grid-template-columns: 105px minmax(0, 1fr); gap: 10px; font-size: 12px; }
   .confirmation-date strong { font-size: 14px; }
+  .admin-workspace > .section-heading { align-items: flex-start; }
+  .admin-workspace .section-heading h2 { font-size: 23px; }
+  .booking-search { grid-template-columns: minmax(0, 1fr) 84px; gap: 12px; }
+  .booking-search > button { grid-column: 1 / -1; }
+  .booking-table { min-width: 580px; }
+  .pagination .secondary-button { padding: 10px; gap: 4px; font-size: 12px; }
+  .reset-slot-row { grid-template-columns: minmax(0, 1fr) 36px; }
+  .reset-slot-row > div { grid-column: 1; }
+  .reset-slot-row > button { grid-column: 2; grid-row: 1 / span 4; }
+  .reset-confirmation > div, .reset-confirmation > button { max-width: none; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

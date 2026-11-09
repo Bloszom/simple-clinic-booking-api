@@ -10,6 +10,7 @@ test('development uses the local API, and production requires HTTPS', () => {
     'https://clinic.example');
   for (const env of [{}, { API_KEY: 'short' }, { API_KEY: apiKey, NODE_ENV: 'production' },
     { API_KEY: apiKey, API_BASE_URL: 'http://clinic.example', NODE_ENV: 'production' },
+    { API_KEY: apiKey, ADMIN_PASSWORD: 'short' },
     { API_KEY: apiKey, API_BASE_URL: 'https://user:password@clinic.example' }]) {
     assert.throws(() => gatewayConfig(env));
   }

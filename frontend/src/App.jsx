@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock,
-  HeartPulse, LoaderCircle, RefreshCw, ShieldCheck, Stethoscope, X } from 'lucide-react';
+  HeartPulse, LoaderCircle, LockKeyhole, RefreshCw, ShieldCheck, Stethoscope, X } from 'lucide-react';
+import Admin from './Admin.jsx';
 import { ApiError, bookingKey, clearBookingKey, request } from './lib/api.js';
 import { dateLabel, dayKey, duration, timeLabel } from './lib/dates.js';
 
@@ -93,7 +94,7 @@ export default function App() {
     loadSlots(controller.signal);
     request('/api/confirmation', { signal: controller.signal }).then(result => {
       setConfirmation(result);
-      setView('confirmation');
+      setView(current => current === 'booking' ? 'confirmation' : current);
     }).catch(() => {});
     return () => controller.abort();
   }, []);
@@ -170,6 +171,12 @@ export default function App() {
     loadSlots();
   }
 
+  async function refreshAfterAdminChange() {
+    await loadSlots();
+    try { setConfirmation(await request('/api/confirmation')); }
+    catch (error) { if (error.status === 404) setConfirmation(null); }
+  }
+
   function slotGroup(label, entries) {
     if (!entries.length) return null;
     return <div className="slot-group" key={label}>
@@ -189,6 +196,7 @@ export default function App() {
       <a className="wordmark" href="/" aria-label="Cedar Clinic home"><HeartPulse size={27} strokeWidth={1.8} /><span>Cedar<span className="wordmark-light">Clinic</span></span></a>
       <nav aria-label="Appointments"><button className={`nav-button ${view === 'booking' ? 'active' : ''}`} onClick={newBooking}><CalendarDays size={16} /> Book a visit</button>
         {confirmation && <button className={`nav-button ${view === 'confirmation' ? 'active' : ''}`} onClick={() => setView('confirmation')}><CheckCircle2 size={16} /> Your appointment</button>}
+        <button className={`nav-button ${view === 'admin' ? 'active' : ''}`} onClick={() => setView('admin')}><LockKeyhole size={16} /> Manage bookings</button>
       </nav>
     </div></header>
     <main className="page-shell">
@@ -198,7 +206,7 @@ export default function App() {
         </div>
         <img src="/clinic.jpg" alt="Bright clinic reception and waiting area" width="1200" height="817" />
       </section>
-      {view === 'confirmation' && confirmation ? <Confirmation confirmation={confirmation} onNewBooking={newBooking}
+      {view === 'admin' ? <Admin slots={slots} onScheduleChanged={refreshAfterAdminChange} /> : view === 'confirmation' && confirmation ? <Confirmation confirmation={confirmation} onNewBooking={newBooking}
         onCancel={cancel} cancelling={cancelBusy} error={cancelError} /> : <>
         <div className="workflow-heading"><span className="step-mark">01</span><h2>Your next appointment</h2><span className="step-text">Choose a time. Make it yours.</span></div>
         <div className="booking-layout">

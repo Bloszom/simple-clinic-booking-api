@@ -8,6 +8,9 @@ Implementation of the [Koya assessment API contract](https://koyaacademy.com/ass
 with a React/Vite booking page in [frontend](frontend/README.md). The backend deploys to
 Render from the repository root; the frontend deploys independently to Vercel with
 Root Directory `frontend`. The server-side gateway keeps the API key out of the browser.
+The website's **Manage bookings** view adds protected email lookup, pagination,
+booking details/cancellation, and schedule reset. Configure a separate server-only
+`ADMIN_PASSWORD` as described in the [frontend setup](frontend/README.md#administration).
 
 For the website locally, install with `npm --prefix frontend ci`, keep `npm run dev`
 running for the backend, and run `npm run web:dev` in a second terminal. Open
