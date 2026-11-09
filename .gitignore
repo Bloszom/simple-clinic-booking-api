@@ -6,3 +6,5 @@ coverage/
 data/
 *.log
 .DS_Store
+dist/
+.vercel/

@@ -13,7 +13,10 @@
     "seed": "node src/database/seed.js",
     "test": "node --test test/*.test.js",
     "test:integration": "node scripts/test-integration.js",
-    "check": "node scripts/check.js"
+    "check": "node scripts/check.js",
+    "web:dev": "npm --prefix frontend run dev",
+    "web:build": "npm --prefix frontend run build",
+    "web:test": "npm --prefix frontend test"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -4,8 +4,14 @@ Express 5 / Node.js backend for clinic appointments, using PostgreSQL through `p
 Implements API-key authentication, database-enforced booking exclusivity, cancellation,
 persistent idempotency, cursor pagination, and a persistent rolling email rate limit.
 
-Backend-only implementation of the [Koya assessment API contract](https://koyaacademy.com/assessment-api).
-The assessment's frontend is outside this repository's current scope.
+Implementation of the [Koya assessment API contract](https://koyaacademy.com/assessment-api),
+with a React/Vite booking page in [frontend](frontend/README.md). The backend deploys to
+Render from the repository root; the frontend deploys independently to Vercel with
+Root Directory `frontend`. The server-side gateway keeps the API key out of the browser.
+
+For the website locally, install with `npm --prefix frontend ci`, keep `npm run dev`
+running for the backend, and run `npm run web:dev` in a second terminal. Open
+**http://localhost:5173**. See the frontend README for Vercel environment settings.
 
 ## Requirements
 
