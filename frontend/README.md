@@ -47,7 +47,9 @@ to use the deployed backend instead. Never commit either environment file.
    Render URL remains the API base URL submitted separately.
 
 `api/[...path].js` is the Vercel function entry point. It reuses the Express gateway;
-`vercel.json` leaves `/api` functions and built assets available before the SPA fallback.
+`vercel.json` explicitly routes `/api` requests to this function before checking built
+assets and the SPA fallback. Without that route, API requests can return the website
+HTML rather than JSON.
 The browser calls same-origin `/api` routes, so the Render API doesn't need a public
 CORS origin or client-visible API key. Never create a `VITE_API_KEY` variable.
 
